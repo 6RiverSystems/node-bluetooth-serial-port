@@ -1,6 +1,6 @@
 FROM balenalib/amd64-ubuntu-node:10-cosmic
 
-RUN apt-get update && apt-get install -y libsqlite3-dev build-essential python-dev
+RUN apt-get update && apt-get install -y libbluetooth-dev build-essential python-dev
 
 COPY . . 
 
