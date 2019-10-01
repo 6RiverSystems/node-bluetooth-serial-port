@@ -1,5 +1,65 @@
 version: 2
 jobs:
+  build-amd64:
+    docker:
+      - image: docker:18.09.9-git
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run: 
+          command: docker build -t amd64 -f amd64.dockerfile .
+          no_output_timeout: 3600 
+      - run: docker run --name temp-container amd64 /bin/true
+      - run: docker cp temp-container:/@sixriver/ .
+      - run: docker cp temp-container:/target_path.txt .
+      - run: docker cp temp-container:/binary_path.txt .
+      - run: docker rm temp-container
+      - run: ls -la
+      - persist_to_workspace:
+          root: ./
+          paths:
+            - target_path.txt
+            - binary_path.txt
+            - '@sixriver'
+  build-arm64:
+    docker:
+      - image: docker:18.09.9-git
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run: 
+          command: docker build -t arm64 -f arm64.dockerfile .
+          no_output_timeout: 3600 
+      - run: docker run --name temp-container arm64 /bin/true
+      - run: docker cp temp-container:/@sixriver/ .
+      - run: docker rm temp-container
+      - run: ls -la
+      - persist_to_workspace:
+          root: ./
+          paths:
+            - '@sixriver'
+  upload:
+    docker:
+      - image: google/cloud-sdk:alpine
+    steps:
+      - attach_workspace:
+          at: .
+      - run: ls -la
+      - run: 
+          name: Activate gcloud
+          command: |
+            echo "${CLIENT_SECRET}" | base64 -d > /tmp/client-secret.json
+            gcloud auth activate-service-account --key-file /tmp/client-secret.json
+      - run: 
+          name: Upload to gcloud 
+          command: |
+            BINARY_PATH=$(dirname $(cat binary_path.txt))
+            TARGET_PATH=$(dirname $(cat target_path.txt))
+            ls -la ${BINARY_PATH}
+            cp -r ${BINARY_PATH}/*.tar.gz .
+            printf "gsutil cp -r *.tar.gz gs://public-nodejs-binary/@sixriver/${TARGET_PATH}/"
+            gsutil cp -r *.tar.gz gs://public-nodejs-binary/@sixriver/${TARGET_PATH}/
+            gsutil acl ch -r -u AllUsers:R gs://public-nodejs-binary/@sixriver/${TARGET_PATH}
   build:
     docker:
       - image: circleci/node:8.12.0
@@ -43,3 +103,10 @@ workflows:
     jobs:
       - build:
           context: 6rs-circle
+      - build-arm64
+      - build-amd64
+      - upload:
+          context: 6rs-circle
+          requires:
+            - build-amd64
+            - build-arm64
